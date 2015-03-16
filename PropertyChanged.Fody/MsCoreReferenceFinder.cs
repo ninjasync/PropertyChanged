@@ -25,6 +25,13 @@ public partial class ModuleWeaver
         var msCoreTypes = msCoreLibDefinition.MainModule.Types;
 
         var objectDefinition = msCoreTypes.FirstOrDefault(x => x.Name == "Object");
+
+        if (objectDefinition == null)
+        {
+            if(ExecuteDot42())
+                return;
+        }
+
         if (objectDefinition == null)
         {
             ExecuteWinRT();
@@ -86,6 +93,68 @@ public partial class ModuleWeaver
 
         InterlockedCompareExchangeForPropChangedHandler = new GenericInstanceMethod(genericCompareExchangeMethod);
         InterlockedCompareExchangeForPropChangedHandler.GenericArguments.Add(PropChangedHandlerReference);
+    }
+
+    private bool ExecuteDot42()
+    {
+        var assemblyResolver = ModuleDefinition.AssemblyResolver;
+        var dot42 = assemblyResolver.Resolve("dot42");
+
+        if (dot42 == null) return false;
+
+        var dot42Types = dot42.MainModule.Types;
+
+        var objectDefinition = dot42Types.First(x => x.Name == "Object");
+
+        if (objectDefinition == null) return false;
+
+        var constructorDefinition = objectDefinition.Methods.First(x => x.IsConstructor);
+        ObjectConstructor = ModuleDefinition.Import(constructorDefinition);
+        var objectEqualsMethodDefinition = objectDefinition.Methods.First(x => x.Name == "Equals" && x.Parameters.Count == 2);
+        ObjectEqualsMethod = ModuleDefinition.Import(objectEqualsMethodDefinition);
+
+
+        var nullableDefinition = dot42Types.FirstOrDefault(x => x.Name == "Nullable");
+        NullableEqualsMethod = ModuleDefinition.Import(nullableDefinition).Resolve().Methods.First(x => x.Name == "Equals");
+
+
+        var actionDefinition = dot42Types.First(x => x.Name == "Action");
+        ActionTypeReference = ModuleDefinition.Import(actionDefinition);
+        var actionConstructor = actionDefinition.Methods.First(x => x.IsConstructor);
+        ActionConstructorReference = ModuleDefinition.Import(actionConstructor);
+
+        var propChangedInterfaceDefinition = dot42Types.First(x => x.Name == "INotifyPropertyChanged");
+        PropChangedInterfaceReference = ModuleDefinition.Import(propChangedInterfaceDefinition);
+
+        var propChangedHandlerDefinition = dot42Types.First(x => x.Name == "PropertyChangedEventHandler");
+        PropChangedHandlerReference = ModuleDefinition.Import(propChangedHandlerDefinition);
+        ComponentModelPropertyChangedEventHandlerInvokeReference = ModuleDefinition.Import(propChangedHandlerDefinition.Methods.First(x => x.Name == "Invoke"));
+        var propChangedArgsDefinition = dot42Types.First(x => x.Name == "PropertyChangedEventArgs");
+        ComponentModelPropertyChangedEventConstructorReference = ModuleDefinition.Import(propChangedArgsDefinition.Methods.First(x => x.IsConstructor));
+
+        var delegateDefinition = dot42Types.First(x => x.Name == "Delegate");
+        var combineMethodDefinition = delegateDefinition.Methods
+            .Single(x =>
+                x.Name == "Combine" &&
+                x.Parameters.Count == 2 &&
+                x.Parameters.All(p => p.ParameterType == delegateDefinition));
+        DelegateCombineMethodRef = ModuleDefinition.Import(combineMethodDefinition);
+        var removeMethodDefinition = delegateDefinition.Methods.First(x => x.Name == "Remove");
+        DelegateRemoveMethodRef = ModuleDefinition.Import(removeMethodDefinition);
+
+        var interlockedDefinition = dot42.MainModule.Types.First(x => x.FullName == "System.Threading.Interlocked");
+        var genericCompareExchangeMethodDefinition = interlockedDefinition
+            .Methods.First(x =>
+                x.IsStatic &&
+                x.Name == "CompareExchange" &&
+                x.GenericParameters.Count == 1 &&
+                x.Parameters.Count == 3);
+        var genericCompareExchangeMethod = ModuleDefinition.Import(genericCompareExchangeMethodDefinition);
+
+        InterlockedCompareExchangeForPropChangedHandler = new GenericInstanceMethod(genericCompareExchangeMethod);
+        InterlockedCompareExchangeForPropChangedHandler.GenericArguments.Add(PropChangedHandlerReference);
+
+        return true;
     }
 
     public void ExecuteWinRT()
